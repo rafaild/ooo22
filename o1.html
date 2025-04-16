@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload в Supabase - новый подход</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <input type="file" id="fileInput" />
+  <button id="uploadBtn">Загрузить</button>
+  <div id="status"></div>
+  <div id="preview"></div>
+    <script>
+    const supabase = supabase.createClient(
+      'https://your-project-id.supabase.co',
+      'public-anon-key'
+    );
+  
+    const user_id = 'USER_ID_ИЗ_СЕРВЕРА'; // Получен через n8n ранее
+  
+    document.getElementById('uploadBtn').onclick = async () => {
+      const fileInput = document.getElementById('fileInput');
+      const status = document.getElementById('status');
+  
+      if (!fileInput.files.length) {
+        status.textContent = 'Выберите файл';
+        return;
+      }
+  
+      const file = fileInput.files[0];
+      const fileName = `${user_id}_${Date.now()}_${file.name}`;
+      const storagePath = `user_images/${fileName}`;
+  
+      // Загрузка файла в Supabase Storage
+      const { error: uploadError } = await supabase
+        .storage
+        .from('store01')
+        .upload(storagePath, file, { upsert: false });
+  
+      if (uploadError) {
+        status.textContent = 'Ошибка загрузки: ' + uploadError.message;
+        return;
+      }
+  
+      // Вызов n8n webhook — регистрация загрузки
+      const webhookResponse = await fetch('https://n8n.yoursite.com/webhook/register-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id,
+          original_filename: file.name,
+          changed_filename: fileName,
+          storage_path: storagePath
+        })
+      });
+  
+      const result = await webhookResponse.json();
+      if (result.user_image_id) {
+        status.textContent = `Файл загружен. ID изображения: ${result.user_image_id}`;
+      } else {
+        status.textContent = 'Ошибка регистрации изображения в базе';
+      }
+    };
+  </script>
+</body>
+</html>
